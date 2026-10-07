@@ -1,0 +1,552 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0d1014">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Radiant Panel</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Semi+Condensed:wght@500;600&display=swap">
+<style>
+/* Layout: one phone-height column. The ceiling panel hangs at the top, seen from
+   below, and carries the temperature; controls stack beneath it in thumb reach. */
+:root {
+  color-scheme: dark;
+  --bg: #0d1014;
+  --surface: #161b21;
+  --surface-2: #1e252d;
+  --line: #2a333d;
+  --fg: #eef2f5;
+  --muted: #8d99a6;
+  --cool-deep: #0b2a6b;
+  --cool: #1f6fe5;
+  --cool-edge: #5cc8ff;
+  --heat-deep: #5a0f14;
+  --heat: #d5382c;
+  --heat-edge: #ffa257;
+  --idle-deep: #20262d;
+  --idle: #3a444f;
+  --idle-edge: #77838f;
+  --ok: #49c58a;
+  --warn: #f0b23c;
+  --bad: #f0624d;
+  --on-accent: #ffffff;
+  --shadow: rgba(0, 0, 0, .45);
+  --font: "Barlow", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-num: "Barlow Semi Condensed", "Barlow", system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* mode colours, switched by [data-mode] on body */
+  --m-deep: var(--cool-deep);
+  --m: var(--cool);
+  --m-edge: var(--cool-edge);
+}
+body[data-mode="heating"] { --m-deep: var(--heat-deep); --m: var(--heat); --m-edge: var(--heat-edge); }
+body[data-run="idle"]     { --m-deep: var(--idle-deep); --m: var(--idle); --m-edge: var(--idle-edge); }
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 400 16px/1.4 var(--font);
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+[hidden] { display: none !important; }
+button { font: inherit; color: inherit; cursor: pointer; }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--m-edge); outline-offset: 2px; }
+
+.app {
+  max-width: 460px;
+  margin: 0 auto;
+  min-height: 100%;
+  padding-inline: 16px;
+  padding-block: calc(env(safe-area-inset-top, 0px) + 12px) calc(env(safe-area-inset-bottom, 0px) + 20px);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* ── header ── */
+.top { display: flex; align-items: center; gap: 10px; }
+.top h1 { font: 600 1.15rem/1 var(--font-num); letter-spacing: .04em; text-transform: uppercase; margin: 0; flex: 1; }
+.pill {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: .78rem; font-weight: 500; letter-spacing: .03em;
+  padding: 6px 10px; border-radius: 99px;
+  background: var(--surface); border: 1px solid var(--line); color: var(--muted);
+}
+.pill i { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+.pill[data-s="live"] { color: var(--fg); }
+.pill[data-s="live"] i { background: var(--ok); }
+.pill[data-s="wait"] i { background: var(--warn); }
+.pill[data-s="bad"] i { background: var(--bad); }
+.icon-btn {
+  width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center;
+  background: var(--surface); border: 1px solid var(--line);
+}
+.icon-btn svg { width: 20px; height: 20px; }
+
+/* ── panel hero ── */
+.hero { position: relative; margin-inline: -4px; }
+.hero svg { display: block; width: 100%; height: auto; }
+.hero .glow { transition: opacity .6s; }
+.reading {
+  position: absolute; left: 0; right: 0; top: 17%;
+  text-align: center; color: var(--on-accent); pointer-events: none;
+  text-shadow: 0 2px 14px var(--shadow);
+}
+.reading .label { font-size: .72rem; font-weight: 600; letter-spacing: .16em; text-transform: uppercase; opacity: .85; }
+.reading .temp { font: 600 clamp(3.4rem, 19vw, 4.9rem)/1 var(--font-num); font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+.reading .temp small { font-size: .42em; font-weight: 500; vertical-align: .72em; margin-left: .08em; opacity: .9; }
+.status { text-align: center; margin-top: -6px; min-height: 2.8em; }
+.status b { display: block; font: 600 1.05rem/1.3 var(--font-num); letter-spacing: .02em; }
+.status span { color: var(--muted); font-size: .9rem; }
+@media (prefers-reduced-motion: no-preference) {
+  body[data-run="running"] .hero .glow { animation: breathe 5s ease-in-out infinite; }
+  @keyframes breathe { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
+}
+
+/* ── controls ── */
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 14px; }
+.card h2 { margin: 0 0 10px; font-size: .72rem; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+
+.seg { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; background: var(--bg); border-radius: 14px; padding: 5px; }
+.seg button {
+  border: 0; background: transparent; border-radius: 10px; min-height: 48px;
+  font: 600 1.02rem var(--font-num); letter-spacing: .03em; color: var(--muted);
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  transition: background .25s, color .25s;
+}
+.seg button svg { width: 18px; height: 18px; }
+.seg button[aria-pressed="true"][data-v="cool"] { background: linear-gradient(135deg, var(--cool-deep), var(--cool)); color: var(--on-accent); }
+.seg button[aria-pressed="true"][data-v="heat"] { background: linear-gradient(135deg, var(--heat-deep), var(--heat)); color: var(--on-accent); }
+.hint { margin: 10px 2px 0; font-size: .85rem; color: var(--warn); }
+
+.stepper { display: grid; grid-template-columns: 56px 1fr 56px; align-items: center; gap: 10px; }
+.stepper button {
+  height: 56px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface-2);
+  font: 500 1.8rem/1 var(--font-num);
+}
+.stepper button:active { background: var(--line); }
+.sp { text-align: center; font: 600 2.5rem/1 var(--font-num); font-variant-numeric: tabular-nums; }
+.sp small { font-size: .45em; font-weight: 500; color: var(--muted); margin-left: .1em; }
+.sp.dirty { color: var(--m-edge); }
+.apply {
+  margin-top: 12px; width: 100%; min-height: 50px; border-radius: 14px; border: 0;
+  background: linear-gradient(135deg, var(--m-deep), var(--m)); color: var(--on-accent);
+  font: 600 1.02rem var(--font-num); letter-spacing: .03em;
+}
+.apply:disabled { background: var(--surface-2); color: var(--muted); cursor: default; }
+
+.row { display: flex; align-items: center; gap: 12px; }
+.row .txt { flex: 1; min-width: 0; }
+.row .txt b { display: block; font: 600 1.02rem var(--font-num); letter-spacing: .02em; }
+.row .txt span { color: var(--muted); font-size: .85rem; }
+.switch { width: 62px; height: 36px; border-radius: 99px; border: 1px solid var(--line); background: var(--bg); position: relative; flex: none; transition: background .25s; }
+.switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 28px; height: 28px; border-radius: 50%; background: var(--muted); transition: transform .25s, background .25s; }
+.switch[aria-checked="true"] { background: var(--ok); border-color: var(--ok); }
+.switch[aria-checked="true"]::after { transform: translateX(26px); background: var(--on-accent); }
+
+.power {
+  display: flex; align-items: center; gap: 12px; width: 100%; min-height: 58px; padding: 0 16px;
+  border-radius: 16px; border: 1.5px solid var(--line); background: var(--surface); color: var(--muted);
+  transition: background .25s, border-color .25s, color .25s;
+}
+.power svg { width: 26px; height: 26px; flex: none; }
+.power .pw-state { font: 600 1.3rem/1 var(--font-num); letter-spacing: .06em; text-transform: uppercase; flex: 1; text-align: left; }
+.power .pw-act { font-size: .85rem; }
+.power[data-on="true"] { background: var(--ok); border-color: var(--ok); color: var(--bg); }
+.power[data-on="false"] { border-color: var(--bad); color: var(--fg); }
+.power[data-on="false"] svg { color: var(--bad); }
+
+.tiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.tile.cold b { color: var(--cool-edge); }
+.tile.hot b { color: var(--heat-edge); }
+.tile { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; min-width: 0; }
+.tile span { display: block; font-size: .68rem; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.tile b { font: 600 1.7rem/1.3 var(--font-num); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tile b small { font-size: .62em; font-weight: 500; color: var(--muted); }
+.foot { text-align: center; color: var(--muted); font-size: .8rem; }
+
+.busy .card button, .busy .power { pointer-events: none; opacity: .6; }
+
+/* ── toast & settings sheet ── */
+.toast {
+  position: fixed; left: 16px; right: 16px; bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+  max-width: 428px; margin: 0 auto; padding: 12px 14px; border-radius: 12px;
+  background: var(--surface-2); border: 1px solid var(--line); box-shadow: 0 8px 30px var(--shadow);
+  font-size: .92rem; z-index: 30;
+}
+.toast.bad { border-color: var(--bad); }
+.sheet-wrap { position: fixed; inset: 0; background: var(--shadow); z-index: 20; display: flex; align-items: flex-end; justify-content: center; }
+.sheet {
+  width: 100%; max-width: 460px; background: var(--surface); border-radius: 22px 22px 0 0; border: 1px solid var(--line); border-bottom: 0;
+  padding: 20px 16px calc(env(safe-area-inset-bottom, 0px) + 20px); display: flex; flex-direction: column; gap: 12px;
+  max-height: 92%; overflow-y: auto;
+}
+.sheet h2 { margin: 0; font: 600 1.25rem var(--font-num); letter-spacing: .02em; }
+.sheet p { margin: 0; color: var(--muted); font-size: .9rem; }
+.sheet label { display: flex; flex-direction: column; gap: 6px; font-size: .78rem; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.sheet input {
+  font: 500 1rem var(--font); color: var(--fg); background: var(--bg); border: 1px solid var(--line);
+  border-radius: 12px; padding: 13px 12px; width: 100%;
+}
+.sheet .err { color: var(--bad); font-size: .9rem; }
+.sheet .btns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 4px; }
+.sheet .btns button { min-height: 50px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface-2); font: 600 1rem var(--font-num); }
+.sheet .btns .primary { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+.sheet .link { background: none; border: 0; color: var(--muted); text-decoration: underline; font-size: .88rem; padding: 6px; align-self: center; }
+</style>
+</head>
+<body data-mode="cooling" data-run="running">
+<div class="app" id="app">
+
+  <header class="top">
+    <h1>Radiant Panel</h1>
+  </header>
+
+  <button class="power" id="pwr" data-on="unknown" aria-pressed="false">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 3v8"/><path d="M6.3 6.8a8 8 0 1 0 11.4 0"/></svg>
+    <span class="pw-state" id="pwrState">Power</span>
+    <span class="pw-act" id="pwrAct">&nbsp;</span>
+  </button>
+
+  <section class="hero" aria-live="polite">
+    <svg viewBox="0 0 360 250" role="img" aria-label="Ceiling radiant panel seen from below">
+      <defs>
+        <linearGradient id="gFace" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="var(--m-deep)"/>
+          <stop offset=".55" stop-color="var(--m)"/>
+          <stop offset="1" stop-color="var(--m-edge)"/>
+        </linearGradient>
+        <radialGradient id="gWash" cx=".5" cy="0" r="1" gradientTransform="matrix(1 0 0 .9 0 0)">
+          <stop offset="0" stop-color="var(--m)" stop-opacity=".55"/>
+          <stop offset=".6" stop-color="var(--m)" stop-opacity=".12"/>
+          <stop offset="1" stop-color="var(--m)" stop-opacity="0"/>
+        </radialGradient>
+        <filter id="fBlur" x="-20%" y="-40%" width="140%" height="180%"><feGaussianBlur stdDeviation="5"/></filter>
+        <clipPath id="cFace"><path d="M14 22 H346 L306 168 H54 Z"/></clipPath>
+      </defs>
+      <!-- radiant wash falling from the panel -->
+      <path class="glow" d="M54 168 H306 L352 250 H8 Z" fill="url(#gWash)"/>
+      <!-- hanger frame -->
+      <rect x="10" y="8" width="340" height="14" rx="2" fill="var(--surface-2)" stroke="var(--line)"/>
+      <rect x="98" y="4" width="26" height="6" rx="2" fill="var(--line)"/>
+      <rect x="236" y="4" width="26" height="6" rx="2" fill="var(--line)"/>
+      <!-- panel face -->
+      <path d="M14 22 H346 L306 168 H54 Z" fill="url(#gFace)"/>
+      <g id="mesh" clip-path="url(#cFace)" stroke="var(--on-accent)" stroke-opacity=".13" stroke-width=".6" fill="none"></g>
+      <!-- edge light -->
+      <path class="glow" d="M14 22 H346 L306 168 H54 Z" fill="none" stroke="var(--m-edge)" stroke-width="5" filter="url(#fBlur)"/>
+      <path d="M14 22 H346 L306 168 H54 Z" fill="none" stroke="var(--m-edge)" stroke-width="1.6" stroke-linejoin="round"/>
+    </svg>
+    <div class="reading">
+      <div class="label">Panel temperature</div>
+      <div class="temp"><span id="temp">--</span><small>°C</small></div>
+    </div>
+    <div class="status"><b id="stHead">&nbsp;</b><span id="stSub">&nbsp;</span></div>
+  </section>
+
+  <section class="card">
+    <h2>Mode</h2>
+    <div class="seg" role="group" aria-label="Heating or cooling">
+      <button id="btnCool" data-v="cool" aria-pressed="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 3v18M4.2 7.5l15.6 9M19.8 7.5l-15.6 9M9.5 4.5 12 7l2.5-2.5M9.5 19.5 12 17l2.5 2.5"/></svg>
+        Cooling
+      </button>
+      <button id="btnHeat" data-v="heat" aria-pressed="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M18.4 5.6l-1.8 1.8M7.4 16.6l-1.8 1.8"/></svg>
+        Heating
+      </button>
+    </div>
+    <p class="hint" id="modeHint" hidden></p>
+  </section>
+
+  <section class="card">
+    <h2 id="spTitle">Cooling setpoint</h2>
+    <div class="stepper">
+      <button id="spDown" aria-label="Lower setpoint by half a degree">&minus;</button>
+      <div class="sp" id="sp"><span id="spVal">--</span><small>°C</small></div>
+      <button id="spUp" aria-label="Raise setpoint by half a degree">+</button>
+    </div>
+    <button class="apply" id="spApply" disabled>Setpoint is up to date</button>
+  </section>
+
+  <section class="tiles">
+    <div class="tile cold"><span>Cold side</span><b id="tCold">--</b></div>
+    <div class="tile hot"><span>Hot side</span><b id="tHot">--</b></div>
+  </section>
+
+  <div class="foot" id="foot">&nbsp;</div>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+
+<script>
+(function () {
+  "use strict";
+  var API = "https://api.particle.io/v1";
+  var SP_MIN = -20, SP_MAX = 60, SP_STEP = 0.5;   // firmware accepts -20..60 °C
+  var STALE_MS = 150000;                           // firmware publishes every 60 s
+
+  // Built-in connection. Anyone who has this file can control the device.
+  var BUILT_IN = {
+    token: "adbdaf8741bffcd7b6d90cbc0c9224bdf3072591",
+    device: "e00fce6866d2eef41ddbb73d",
+    event: "radiantPanel"
+  };
+
+  var $ = function (id) { return document.getElementById(id); };
+
+  // ── state ────────────────────────────────────────────────────────────────
+  var cfg = loadCfg();
+  var demo = !cfg;
+  var s = demo ? exampleState() : blankState();
+  var draft = null;       // setpoint being edited, not yet sent
+  var es = null;
+  var conn = demo ? "demo" : "wait";
+
+  function blankState() {
+    return { mode: null, valve: null, panel: null, cool: null, heat: null, liquid: null,
+             discharge: null, state: null, enabled: null, rpm: null, at: null };
+  }
+  function exampleState() {
+    return { mode: "cooling", valve: "cool", panel: 17.0, cool: 4.0, heat: 22.0, liquid: 31.4,
+             discharge: 58.2, state: "running", enabled: true, rpm: 2950, at: Date.now() };
+  }
+  function loadCfg() { return BUILT_IN; }
+
+  // Which mode the controls act on: the commanded valve position if known,
+  // otherwise whatever the panel's thermistors report.
+  function selMode() {
+    if (s.valve === "heat") return "heating";
+    if (s.valve === "cool") return "cooling";
+    return s.mode || "cooling";
+  }
+  function curSetpoint() { return selMode() === "heating" ? s.heat : s.cool; }
+
+  // ── rendering ────────────────────────────────────────────────────────────
+  function fmt(v, d) { return (typeof v === "number" && isFinite(v)) ? v.toFixed(d) : "--"; }
+
+  function render() {
+    var mode = s.mode || selMode();
+    var running = s.state === "running";
+    document.body.dataset.mode = mode;
+    document.body.dataset.run = running ? "running" : (s.state ? "idle" : "running");
+
+    $("temp").textContent = fmt(s.panel, 1);
+
+    var head = " ", sub = " ";
+    var target = (mode === "heating" ? s.heat : s.cool);
+    var verb = mode === "heating" ? "Heating" : "Cooling";
+    if (s.state === "running") { head = verb + " to " + fmt(target, 1) + "°C"; sub = "Compressor running at " + Math.round(s.rpm || 0).toLocaleString() + " RPM"; }
+    else if (s.state === "lockout") { head = verb + " to " + fmt(target, 1) + "°C"; sub = "Compressor is resting before it restarts"; }
+    else if (s.state === "off") { head = "At setpoint"; sub = "Compressor is off until the panel drifts from " + fmt(target, 1) + "°C"; }
+    else if (s.state === "disabled") { head = "System is off"; sub = "Tap the power button to run the panel"; }
+    else if (s.state === "fault") { head = "Fault"; sub = "A sensor or the speed controller is not responding. Compressor stopped."; }
+    else if (!demo) { head = "Waiting for the panel"; sub = "The first reading can take up to a minute"; }
+    $("stHead").textContent = head;
+    $("stSub").textContent = sub;
+
+    var sm = selMode();
+    $("btnCool").setAttribute("aria-pressed", String(sm === "cooling"));
+    $("btnHeat").setAttribute("aria-pressed", String(sm === "heating"));
+    var hint = $("modeHint");
+    if (s.mode && s.valve && sm !== s.mode) {
+      hint.hidden = false;
+      hint.textContent = "Switching to " + sm + ". Waiting for the panel to confirm.";
+    } else { hint.hidden = true; }
+
+    $("spTitle").textContent = (sm === "heating" ? "Heating" : "Cooling") + " setpoint";
+    var cur = curSetpoint();
+    var shown = draft !== null ? draft : cur;
+    $("spVal").textContent = fmt(shown, 1);
+    var dirty = draft !== null && draft !== cur;
+    $("sp").classList.toggle("dirty", dirty);
+    var ap = $("spApply");
+    ap.disabled = !dirty;
+    ap.textContent = dirty ? "Set " + (sm === "heating" ? "heating" : "cooling") + " to " + fmt(draft, 1) + "°C" : "Setpoint is up to date";
+
+    var on = s.enabled === true;
+    var pw = $("pwr");
+    pw.dataset.on = s.enabled === null ? "unknown" : String(on);
+    pw.setAttribute("aria-pressed", String(on));
+    $("pwrState").textContent = s.enabled === null ? "Power" : (on ? "Power on" : "Power off");
+    $("pwrAct").textContent = s.enabled === null ? "Waiting for the panel" : (on ? "Tap to turn off" : "Tap to turn on");
+
+    // Cold side = suction-line sensor (A1, the panel temperature) in cooling and the
+    // liquid-line sensor (A0) in heating. Hot side is the other one. Fixed by mode,
+    // not by which reading happens to be lower.
+    var heatingNow = mode === "heating";
+    var coldV = heatingNow ? s.liquid : s.panel, hotV = heatingNow ? s.panel : s.liquid;
+    $("tCold").textContent = typeof coldV === "number" ? coldV.toFixed(1) + "°C" : "--";
+    $("tHot").textContent  = typeof hotV === "number" ? hotV.toFixed(1) + "°C" : "--";
+
+    renderConn();
+  }
+
+  function renderConn() {
+    var foot = $("foot");
+    var age = s.at ? Date.now() - s.at : null;
+    var c = conn;
+    if (c === "live" && age !== null && age > STALE_MS) c = "stale";
+    var ago = "";
+    if (age !== null) { var sec = Math.round(age / 1000); ago = sec < 5 ? "just now" : sec < 90 ? sec + " s ago" : Math.round(sec / 60) + " min ago"; }
+    if (c === "bad") foot.textContent = "Offline. Trying to reconnect." + (ago ? " Last reading " + ago + "." : "");
+    else if (age === null) foot.textContent = "Connecting to the panel";
+    else if (c === "stale") foot.textContent = "No new reading. Last one was " + ago + ".";
+    else foot.textContent = "Updated " + ago;
+  }
+
+  var toastTimer = null;
+  function toast(msg, bad) {
+    var t = $("toast");
+    t.textContent = msg; t.classList.toggle("bad", !!bad); t.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { t.hidden = true; }, bad ? 5000 : 2500);
+  }
+
+  // perspective mesh on the panel face
+  (function mesh() {
+    var g = $("mesh"), d = "", i, t;
+    for (i = 1; i < 24; i++) { t = i / 24; d += "M" + (14 + 332 * t).toFixed(1) + " 22L" + (54 + 252 * t).toFixed(1) + " 168"; }
+    for (i = 1; i < 12; i++) { t = Math.pow(i / 12, 0.85); var y = 22 + 146 * t; d += "M" + (14 + 40 * t).toFixed(1) + " " + y.toFixed(1) + "H" + (346 - 40 * t).toFixed(1); }
+    var p = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    p.setAttribute("d", d); g.appendChild(p);
+  })();
+
+  // ── Particle cloud ───────────────────────────────────────────────────────
+  function dev() { return API + "/devices/" + encodeURIComponent(cfg.device); }
+  function auth() { return { Authorization: "Bearer " + cfg.token }; }
+
+  function callFn(name, arg) {
+    return fetch(dev() + "/" + name, {
+      method: "POST",
+      headers: Object.assign({ "Content-Type": "application/x-www-form-urlencoded" }, auth()),
+      body: "arg=" + encodeURIComponent(arg)
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (j) {
+        if (!r.ok) { var e = new Error(j.error || ("HTTP " + r.status)); e.status = r.status; throw e; }
+        return j.return_value;
+      });
+    });
+  }
+  function getVar(name) {
+    return fetch(dev() + "/" + name, { headers: auth() }).then(function (r) {
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.json();
+    }).then(function (j) { return j.result; });
+  }
+
+  function applyEvent(d) {
+    var num = function (v) { return typeof v === "number" ? v : null; };
+    if (d.mode === "heating" || d.mode === "cooling") s.mode = d.mode;
+    if (d.valve === "heat" || d.valve === "cool") s.valve = d.valve;
+    s.panel = num(d.panel_temp);
+    if (num(d.cool_setpoint) !== null) s.cool = d.cool_setpoint;
+    if (num(d.heat_setpoint) !== null) s.heat = d.heat_setpoint;
+    s.liquid = num(d.liquid_temp);
+    s.discharge = num(d.discharge_temp);
+    if (typeof d.state === "string") s.state = d.state;
+    if (typeof d.enabled === "boolean") s.enabled = d.enabled;
+    s.rpm = num(d.rpm);
+    s.at = Date.now();
+    render();
+  }
+
+  function connect() {
+    if (es) { es.close(); es = null; }
+    demo = false; s = blankState(); draft = null; conn = "wait"; render();
+
+    // Quick first paint from cloud variables, then ask the firmware to publish.
+    Promise.all(["mode", "panelTemp", "coolSP", "heatSP"].map(function (v) { return getVar(v).catch(function () { return null; }); }))
+      .then(function (r) {
+        if (s.at) return;                       // a full event already arrived
+        if (r[0] === "heating" || r[0] === "cooling") s.mode = r[0];
+        if (typeof r[1] === "number") s.panel = r[1];
+        if (typeof r[2] === "number") s.cool = r[2];
+        if (typeof r[3] === "number") s.heat = r[3];
+        if (r[0] !== null || r[1] !== null) { conn = "live"; }
+        render();
+      });
+    callFn("refresh", "").catch(function () {});   // older firmware has no refresh; the 60 s publish still arrives
+
+    var url = dev() + "/events/" + encodeURIComponent(cfg.event) + "?access_token=" + encodeURIComponent(cfg.token);
+    es = new EventSource(url);
+    es.onopen = function () { conn = "live"; renderConn(); };
+    es.onerror = function () { conn = "bad"; renderConn(); };   // EventSource retries by itself
+    es.addEventListener(cfg.event, function (e) {
+      try {
+        var outer = JSON.parse(e.data);
+        var d = typeof outer.data === "string" ? JSON.parse(outer.data) : outer.data;
+        conn = "live";
+        applyEvent(d);
+      } catch (err) { /* not our JSON; ignore */ }
+    });
+  }
+
+  // Runs a command against the device, or locally when showing example data.
+  function command(name, arg, onOk, demoFn) {
+    if (demo) { demoFn(); render(); return; }
+    $("app").classList.add("busy");
+    callFn(name, arg).then(function (rv) {
+      if (rv === -1) { toast("The panel rejected that value.", true); return; }
+      onOk(rv); render();
+    }).catch(function (e) {
+      toast(e.status === 401 || e.status === 403 ? "Particle did not accept the access token." :
+            "Could not reach the panel. Check that it is powered and online.", true);
+    }).then(function () { $("app").classList.remove("busy"); });
+  }
+
+  // ── controls ─────────────────────────────────────────────────────────────
+  function setMode(v) {
+    if ((v === "heat" ? "heating" : "cooling") === selMode() && s.valve) return;
+    command("setValve", v, function (rv) {
+      s.valve = rv === 1 ? "heat" : "cool"; draft = null;
+      toast("Valve set to " + (rv === 1 ? "heating" : "cooling") + ". Compressor pauses for 1 minute.");
+    }, function () {
+      s.valve = v; s.mode = v === "heat" ? "heating" : "cooling"; draft = null;
+      s.panel = v === "heat" ? 24.5 : 17.0;
+    });
+  }
+  $("btnCool").onclick = function () { setMode("cool"); };
+  $("btnHeat").onclick = function () { setMode("heat"); };
+
+  function nudge(dir) {
+    var base = draft !== null ? draft : curSetpoint();
+    if (typeof base !== "number") return;
+    var v = Math.round((base + dir * SP_STEP) / SP_STEP) * SP_STEP;
+    draft = Math.min(SP_MAX, Math.max(SP_MIN, v));
+    render();
+  }
+  $("spUp").onclick = function () { nudge(1); };
+  $("spDown").onclick = function () { nudge(-1); };
+
+  $("spApply").onclick = function () {
+    if (draft === null) return;
+    var heating = selMode() === "heating", v = draft;
+    var done = function () { if (heating) s.heat = v; else s.cool = v; draft = null; };
+    command(heating ? "setHeat" : "setCool", v.toFixed(1), function () { done(); toast("Setpoint saved on the panel."); }, done);
+  };
+
+  $("pwr").onclick = function () {
+    var want = s.enabled !== true;
+    command("setPower", want ? "on" : "off", function (rv) { s.enabled = rv === 1; }, function () {
+      s.enabled = want; s.state = want ? "running" : "disabled";
+    });
+  };
+
+  // ── start ────────────────────────────────────────────────────────────────
+  render();
+  if (cfg) connect();
+  setInterval(renderConn, 5000);
+  document.addEventListener("visibilitychange", function () {
+    if (!document.hidden && cfg && !demo) callFn("refresh", "").catch(function () {});
+  });
+})();
+</script>
+</body>
+</html>
