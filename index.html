@@ -32,6 +32,8 @@
   --idle: #3a444f;
   --idle-edge: #77838f;
   --ok: #49c58a;
+  --lamp: #ffd166;
+  --lamp-deep: #3a2f12;
   --bad: #f0624d;
   --on-accent: #ffffff;
   --shadow: rgba(0, 0, 0, .45);
@@ -124,6 +126,18 @@ button:disabled { cursor: default; }
 .comfort .b-off { color: var(--fg); font-size: .92rem; }
 .comfort button:active:not(:disabled) { background: var(--line); }
 .comfort button:disabled { opacity: .35; }
+
+.lights {
+  display: flex; align-items: center; gap: 12px; width: 100%; min-height: 58px; padding: 0 16px;
+  border-radius: 16px; border: 1px solid var(--line); background: var(--surface); color: var(--muted);
+  transition: background .25s, border-color .25s, color .25s;
+}
+.lights svg { width: 24px; height: 24px; flex: none; }
+.lights .l-name { flex: 1; text-align: left; font: 600 1.15rem/1 var(--font-num); letter-spacing: .05em; text-transform: uppercase; color: var(--fg); }
+.lights .l-state { font: 600 1rem/1 var(--font-num); letter-spacing: .06em; text-transform: uppercase; }
+.lights[aria-pressed="true"] { background: var(--lamp-deep); border-color: var(--lamp); color: var(--lamp); }
+.lights[aria-pressed="true"] svg { filter: drop-shadow(0 0 6px var(--lamp)); }
+.lights:disabled { opacity: .5; }
 
 .tiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
 .tile { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; min-width: 0; }
@@ -227,6 +241,12 @@ button:disabled { cursor: default; }
     </div>
   </section>
 
+  <button class="lights" id="btnLights" aria-pressed="false" disabled>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.6 10.8c.6.5 1 1.2 1.1 2V16h5v-.2c.1-.8.5-1.5 1.1-2A6 6 0 0 0 12 3z"/></svg>
+    <span class="l-name">Lights</span>
+    <span class="l-state" id="lightsState">--</span>
+  </button>
+
   <section class="tiles">
     <div class="tile cold"><span>Cold side</span><b id="tCold">--</b></div>
     <div class="tile hot"><span>Hot side</span><b id="tHot">--</b></div>
@@ -257,7 +277,7 @@ button:disabled { cursor: default; }
 
 
   // ── state ────────────────────────────────────────────────────────────────
-  var s = { mode: null, state: null, enabled: null, setpoint: null, ambient: null,
+  var s = { mode: null, state: null, enabled: null, setpoint: null, ambient: null, lights: null,
             panel: null, liquid: null, rpm: null, at: null };
   var conn = "wait";
   var es = null;
@@ -299,6 +319,11 @@ button:disabled { cursor: default; }
     $("btnWarmer").disabled = !canAdjust;
     $("btnOff").disabled = !on;
 
+
+    var lb = $("btnLights");
+    lb.disabled = s.lights === null || lightsBusy;
+    lb.setAttribute("aria-pressed", String(s.lights === true));
+    $("lightsState").textContent = s.lights === null ? "--" : (s.lights ? "On" : "Off");
 
     // Cold side = A1 (panel_temp) in cooling, A0 (liquid) in heating
     var coldV = heating ? s.liquid : s.panel, hotV = heating ? s.panel : s.liquid;
@@ -369,6 +394,7 @@ button:disabled { cursor: default; }
     if (d.mode === "heating" || d.mode === "cooling") s.mode = d.mode;
     if (typeof d.state === "string") s.state = d.state;
     if (typeof d.enabled === "boolean") s.enabled = d.enabled;
+    if (typeof d.lights === "boolean" && !lightsBusy) s.lights = d.lights;
     if (!queue.length && !sending && num(d.setpoint) !== null) s.setpoint = d.setpoint;
     s.ambient = num(d.ambient);
     s.panel = num(d.panel_temp);
@@ -430,6 +456,20 @@ button:disabled { cursor: default; }
   $("startHeat").onclick = function () { start("heat"); };
   $("pwOn").onclick = function () { turnOff("System turned off."); };
   $("btnOff").onclick = function () { turnOff("Off. Enjoy it."); };
+
+  // ── lights (independent of the heat pump) ──
+  var lightsBusy = false;
+  $("btnLights").onclick = function () {
+    if (s.lights === null) return;
+    var want = !s.lights;
+    lightsBusy = true; s.lights = want; render();
+    callFn("setLights", want ? "on" : "off").then(function (rv) {
+      if (rv === 1 || rv === 0) s.lights = rv === 1;
+    }).catch(function (e) {
+      s.lights = !want;
+      toast(failMsg(e), true);
+    }).then(function () { lightsBusy = false; render(); });
+  };
 
   // ── warmer / cooler ──────────────────────────────────────────────────────
   // Taps are sent one at a time. The screen updates straight away using the
